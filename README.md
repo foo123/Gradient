@@ -2,7 +2,7 @@
 
 Class to create **linear, radial, elliptical and conic gradients** as bitmaps, even without canvas
 
-**version 1.0.0** (9 kB minified)
+**version 1.1.0** (11 kB minified)
 
 Example:
 
@@ -56,19 +56,43 @@ function drawEllipticGradient(cx, cy, rx, ry, angle)
 {
     const canvas1 = document.getElementById('elliptic1');
     const canvas2 = document.getElementById('elliptic2');
-    const ctx = canvas1.getContext("2d");
+    const canvas3 = document.getElementById('elliptic3');
+    const canvas4 = document.getElementById('elliptic4');
     const r = Math.max(rx, ry), sx = rx/r, sy = ry/r;
+    const ctx1 = canvas1.getContext("2d");
+    const ctx3 = canvas3.getContext("2d");
+    // grad1 is a transformed radial gradient
+    const grad1 = Gradient.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad1.translate(-cx, -cy);
+    grad1.scale(sx, sy);
+    //grad1.rotate(-angle);
+    grad1.translate(cx, cy);
+    // grad2 is elliptic gradient
+    const grad2 = Gradient.createEllipticGradient(cx, cy, rx, ry, angle);
+
     applyGradient(
-        canvas1.getContext("2d").createRadialGradient(cx/sx, cy/sy, 0, cx/sx, cy/sy, r),
+        ctx1.createRadialGradient(cx/sx, cy/sy, 0, cx/sx, cy/sy, r),
         canvas1,
-        Gradient.createEllipticGradient(cx, cy, rx, ry, /*angle*/0),
+        grad1,
         canvas2
     );
-    ctx.scale(sx, sy);
-    /*ctx.translate(-cx/sx, -cy/sy);
-    ctx.rotate(angle);
-    ctx.translate(cx/sx, cy/sy);*/
-    ctx.fillRect(0, 0, w/sx, h/sy);
+    // transform radial gradient to become an unrotated elliptic
+    ctx1.scale(sx, sy);
+    ctx1.fillRect(0, 0, w/sx, h/sy);
+
+
+    applyGradient(
+        ctx3.createRadialGradient(cx, cy, 0, cx, cy, r),
+        canvas3,
+        grad2,
+        canvas4
+    );
+    // transform radial gradient to become a rotated elliptic (does not produce expected result)
+    ctx3.translate(-cx, -cy);
+    ctx3.scale(sx, sy);
+    ctx3.rotate(-angle);
+    ctx3.translate(cx, cy);
+    ctx3.fillRect(0, 0, w, h);
 }
 function drawConicGradient(angle, cx, cy)
 {

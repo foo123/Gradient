@@ -2,7 +2,7 @@
 *   Gradient
 *   class to create linear/radial/elliptical/conic gradients as bitmaps even without canvas
 *
-*   @version 1.0.0
+*   @version 1.1.0
 *   https://github.com/foo123/Gradient
 *
 **/
@@ -27,15 +27,42 @@ function Gradient(gradColorGetter)
 {
     var self = this;
     self._colorAt = gradColorGetter || null;
+    self.resetTransform();
     self.addColorStop(0, 'transparent');
     self.addColorStop(1, 'transparent');
 }
-Gradient.VERSION = "1.0.0";
+Gradient.VERSION = "1.1.0";
 Gradient.prototype = {
     constructor: Gradient,
     stops: null,
     _stops: null,
     _colorAt: null,
+    matrix: null,
+    imatrix: null,
+    resetTransform: function() {
+        this.matrix = new Matrix();
+        this.imatrix = new Matrix();
+    },
+    scale: function(sx, sy, ox, oy) {
+        this.matrix = Matrix.scale(sx, sy, ox, oy).mul(this.matrix);
+        this.imatrix = this.matrix.inv();
+    },
+    rotate: function(theta, ox, oy) {
+        this.matrix = Matrix.rotate(theta, ox, oy).mul(this.matrix);
+        this.imatrix = this.matrix.inv();
+    },
+    translate: function(tx, ty) {
+        this.matrix = Matrix.translate(tx, ty).mul(this.matrix);
+        this.imatrix = this.matrix.inv();
+    },
+    skewX: function(s) {
+        this.matrix = Matrix.skewX(s).mul(this.matrix);
+        this.imatrix = this.matrix.inv();
+    },
+    skewY: function(s) {
+        this.matrix = Matrix.skewY(s).mul(this.matrix);
+        this.imatrix = this.matrix.inv();
+    },
     addColorStop: function(offset, color) {
         var self = this;
         if (null == self.stops) self.stops = {};
@@ -45,29 +72,27 @@ Gradient.prototype = {
         self._stops = o.map(function(o) {return self.stops[o];});
     },
     getColorAt: function(x, y) {
-        var self = this, stops;
+        var self = this, p;
         if (self._colorAt)
         {
-            return self._colorAt(x, y, self._stops, new ImArray(4));
+            p = self.imatrix.transform(x, y)
+            return self._colorAt(p.x, p.y, self._stops, new ImArray(4), 0);
         }
     },
     getBitmap: function(w, h) {
-        var self = this, color_at = self._colorAt,
-            stops, i, x, y, size, bmp, c;
+        var self = this, m = self.imatrix, color_at = self._colorAt,
+            stops, i, x, y, p, size, bmp, c;
         if (color_at)
         {
-            size = (w*h)<<2;
+            size = (w*h) << 2;
             bmp = new ImArray(size);
             c = new ImArray(4);
             stops = self._stops;
             for (x=0,y=0,i=0; i<size; i+=4,++x)
             {
                 if (x >= w) {x=0; ++y;}
-                color_at(x, y, stops, c);
-                bmp[i + 0] = c[0];
-                bmp[i + 1] = c[1];
-                bmp[i + 2] = c[2];
-                bmp[i + 3] = c[3];
+                p = m.transform(x, y)
+                color_at(p.x, p.y, stops, bmp, i);
             }
             return bmp;
         }
@@ -82,7 +107,7 @@ Gradient.createLinearGradient = function(x1, y1, x2, y2) {
         vert = is_strictly_equal(dx, 0),
         hor = is_strictly_equal(dy, 0),
         f = 2*dx*dy;
-    return new Gradient(function(x, y, stops, pixel) {
+    return new Gradient(function(x, y, stops, pixel, i) {
         var t, px, py, stop1, stop2, sl = stops.length;
         px = x - x1; py = y - y1;
         t = hor && vert ? 0 : (vert ? py/dy : (hor ? px/dx : (px*dy + py*dx)/f));
@@ -102,7 +127,7 @@ Gradient.createLinearGradient = function(x1, y1, x2, y2) {
             stop1 = 0 === stop2 ? 0 : (stop2 - 1);
         }
         return interpolatePixel(
-            pixel, 0,
+            pixel, i || 0,
             stops[stop1][1], stops[stop2][1],
             // warp the value if needed, between stop ranges
             stops[stop2][0] > stops[stop1][0] ? (t - stops[stop1][0])/(stops[stop2][0] - stops[stop1][0]) : t
@@ -125,7 +150,7 @@ Gradient.createRadialGradient = function(x0, y0, r0, x1, y1, r1) {
     var a = r0*r0 - 2*r0*r1 + r1*r1 - x0*x0 + 2*x0*x1 - x1*x1 - y0*y0 + 2*y0*y1 - y1*y1,
         b = -2*r0*r0 + 2*r0*r1 + 2*x0*x0 - 2*x0*x1 + 2*y0*y0 - 2*y0*y1,
         c = -x0*x0 - y0*y0 + r0*r0;
-    return new Gradient(function(x, y, stops, pixel) {
+    return new Gradient(function(x, y, stops, pixel, i) {
         var t, px, py, pr, s, stop1, stop2, sl = stops.length;
         s = quadratic_roots(a, b - 2*x*x0 + 2*x*x1 - 2*y*y0 + 2*y*y1, c - x*x + 2*x*x0 - y*y + 2*y*y0);
         if (!s)
@@ -165,7 +190,7 @@ Gradient.createRadialGradient = function(x0, y0, r0, x1, y1, r1) {
             stop1 = 0 === stop2 ? 0 : (stop2 - 1);
         }
         return interpolatePixel(
-            pixel, 0,
+            pixel, i || 0,
             stops[stop1][1], stops[stop2][1],
             // warp the value if needed, between stop ranges
             stops[stop2][0] > stops[stop1][0] ? (t - stops[stop1][0])/(stops[stop2][0] - stops[stop1][0]) : t
@@ -176,7 +201,7 @@ Gradient.createConicGradient = function(angle, cx, cy) {
     angle = angle || 0;
     cx = cx || 0;
     cy = cy || 0;
-    return new Gradient(function(x, y, stops, pixel) {
+    return new Gradient(function(x, y, stops, pixel, i) {
         var t, stop1, stop2, sl = stops.length;
         t = stdMath.atan2(y - cy, x - cx) + HALF_PI - angle;
         if (0 > t) t += TWO_PI;
@@ -185,7 +210,7 @@ Gradient.createConicGradient = function(angle, cx, cy) {
         stop2 = binary_search(t, stops, sl);
         stop1 = 0 === stop2 ? 0 : (stop2 - 1);
         return interpolatePixel(
-            pixel, 0,
+            pixel, i || 0,
             stops[stop1][1], stops[stop2][1],
             // warp the value if needed, between stop ranges
             stops[stop2][0] > stops[stop1][0] ? (t - stops[stop1][0])/(stops[stop2][0] - stops[stop1][0]) : t
@@ -199,7 +224,7 @@ Gradient.createEllipticGradient = function(cx, cy, rx, ry, angle) {
     ry = ry || 0;
     angle = angle || 0;
     var cos = stdMath.cos(angle), sin = stdMath.sin(angle);
-    return new Gradient(function(x, y, stops, pixel) {
+    return new Gradient(function(x, y, stops, pixel, i) {
         var t, px, py, stop1, stop2, sl = stops.length;
         px = (cos*(x - cx) - sin*(y - cy))/rx;
         py = (sin*(x - cx) + cos*(y - cy))/ry;
@@ -215,12 +240,112 @@ Gradient.createEllipticGradient = function(cx, cy, rx, ry, angle) {
             stop1 = 0 === stop2 ? 0 : (stop2 - 1);
         }
         return interpolatePixel(
-            pixel, 0,
+            pixel, i || 0,
             stops[stop1][1], stops[stop2][1],
             // warp the value if needed, between stop ranges
             stops[stop2][0] > stops[stop1][0] ? (t - stops[stop1][0])/(stops[stop2][0] - stops[stop1][0]) : t
         );
     });
+};
+
+function Matrix(m00, m01, m02, m10, m11, m12)
+{
+    var self = this;
+    if (arguments.length)
+    {
+        self.m00 = m00;
+        self.m01 = m01;
+        self.m02 = m02;
+        self.m10 = m10;
+        self.m11 = m11;
+        self.m12 = m12;
+    }
+    else
+    {
+        self.m00 = 1;
+        self.m01 = 0;
+        self.m02 = 0;
+        self.m10 = 0;
+        self.m11 = 1;
+        self.m12 = 0;
+    }
+}
+Matrix.prototype = {
+    constructor: Matrix,
+    m00: 1,
+    m01: 0,
+    m02: 0,
+    m10: 0,
+    m11: 1,
+    m12: 0,
+    mul: function(other) {
+        var self = this;
+        return new Matrix(
+        self.m00*other.m00 + self.m01*other.m10,
+        self.m00*other.m01 + self.m01*other.m11,
+        self.m00*other.m02 + self.m01*other.m12 + self.m02,
+        self.m10*other.m00 + self.m11*other.m10,
+        self.m10*other.m01 + self.m11*other.m11,
+        self.m10*other.m02 + self.m11*other.m12 + self.m12
+        );
+    },
+    inv: function() {
+        var self = this,
+            a00 = self.m00, a01 = self.m01, a02 = self.m02,
+            a10 = self.m10, a11 = self.m11, a12 = self.m12,
+            det2 = a00*a11 - a01*a10,
+            i00 = 0, i01 = 0, i10 = 0, i11 = 0;
+
+        if (is_strictly_equal(det2, 0)) return null;
+        i00 = a11/det2; i01 = -a01/det2;
+        i10 = -a10/det2; i11 = a00/det2;
+        return new Matrix(
+        i00, i01, -i00*a02 - i01*a12,
+        i10, i11, -i10*a02 - i11*a12
+        );
+    },
+    transform: function(x, y) {
+        var self = this;
+        return {
+            x: self.m00*x + self.m01*y + self.m02,
+            y: self.m10*x + self.m11*y + self.m12
+        };
+    }
+};
+Matrix.translate = function(tx, ty) {
+    return new Matrix(
+    1, 0, tx,
+    0, 1, ty
+    );
+};
+Matrix.scale = function(sx, sy, ox, oy) {
+    ox = ox || 0;
+    oy = oy || 0;
+    return new Matrix(
+    sx, 0,  -sx*ox + ox,
+    0,  sy, -sy*oy + oy
+    );
+};
+Matrix.rotate = function(theta, ox, oy) {
+    ox = ox || 0;
+    oy = oy || 0;
+    var cos = stdMath.cos(theta), sin = stdMath.sin(theta);
+    return new Matrix(
+    cos, -sin, ox - cos*ox + sin*oy,
+    sin,  cos, oy - cos*oy - sin*ox
+    );
+};
+Matrix.skewX = function(s) {
+    return new Matrix(
+    1, s, 0,
+    0, 1, 0
+    );
+};
+Matrix.skewY = function(s) {
+    return new Matrix(
+    1, 0, 0,
+    s, 1, 0
+    );
 };
 
 // utils
