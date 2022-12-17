@@ -2,7 +2,7 @@
 *   Gradient
 *   class to create linear/radial/elliptical/conic gradients as bitmaps even without canvas
 *
-*   @version 1.1.0
+*   @version 1.1.1
 *   https://github.com/foo123/Gradient
 *
 **/
@@ -23,80 +23,77 @@ var HAS = Object.prototype.hasOwnProperty,
     stdMath = Math, PI = stdMath.PI, TWO_PI = 2*PI, HALF_PI = PI/2, EPS = 1e-6,
     ImArray = 'undefined' !== typeof Uint8ClampedArray ? Uint8ClampedArray : ('undefined' !== typeof Uint8Array ? Uint8Array : Array);
 
-function Gradient(gradColorGetter)
+function Gradient(grad_color_at)
 {
-    var self = this;
-    self._colorAt = gradColorGetter || null;
-    self.resetTransform();
-    self.addColorStop(0, 'transparent');
-    self.addColorStop(1, 'transparent');
+    if (
+        !(this instanceof Gradient) ||
+        ('function' !== typeof grad_color_at) ||
+        (5 > grad_color_at.length)
+    )
+    {
+        throw new Error('Gradient: invalid gradient');
+    }
+
+    var self = this,
+        imatrix = new Matrix(),
+        stops = {'0': [0, [0,0,0,0]], '1': [1, [0,0,0,0]]},
+        _stops = null, colorStops
+    ;
+    colorStops = function() {
+        if (null == _stops)
+        {
+            var o = Object.keys(stops);
+            o.sort(function(a, b) {return parseFloat(a) - parseFloat(b);});
+            _stops = o.map(function(o) {return stops[o];}).filter(function(s) {return 0 <= s[0] && s[0] <= 1;});
+        }
+        return _stops;
+    };
+    self.transform = {
+        reset: function() {
+            imatrix = new Matrix();
+        },
+        scale: function(sx, sy, ox, oy) {
+            imatrix = imatrix.mul(Matrix.scale(1/sx, 1/sy, ox, oy));
+        },
+        rotate: function(theta, ox, oy) {
+            imatrix = imatrix.mul(Matrix.rotate(-theta, ox, oy));
+        },
+        translate: function(tx, ty) {
+            imatrix = imatrix.mul(Matrix.translate(-tx, -ty));
+        },
+        skewX: function(s) {
+            imatrix = imatrix.mul(Matrix.skewX(s).inv());
+        },
+        skewX: function(s) {
+            imatrix = imatrix.mul(Matrix.skewY(s).inv());
+        }
+    };
+    self.addColorStop = function(offset, color) {
+        _stops = null;
+        stops[String(offset)] = [+offset, parseColor(color) || [0,0,0,0]];
+    }
+    self.getColorAt = function(x, y) {
+        var p = imatrix.transform(x, y);
+        return grad_color_at(p.x, p.y, colorStops(), new ImArray(4), 0);
+    };
+    self.getBitmap = function(w, h) {
+        var color_stops = colorStops(), i, x, y, p, size = (w*h) << 2, bmp = new ImArray(size);
+        for (x=0,y=0,i=0; i<size; i+=4,++x)
+        {
+            if (x >= w) {x=0; ++y;}
+            p = imatrix.transform(x, y);
+            grad_color_at(p.x, p.y, color_stops, bmp, i);
+        }
+        return bmp;
+    };
 }
-Gradient.VERSION = "1.1.0";
+Gradient.VERSION = "1.1.1";
 Gradient.prototype = {
     constructor: Gradient,
-    stops: null,
-    _stops: null,
-    _colorAt: null,
-    matrix: null,
-    imatrix: null,
-    resetTransform: function() {
-        this.matrix = new Matrix();
-        this.imatrix = new Matrix();
-    },
-    scale: function(sx, sy, ox, oy) {
-        this.matrix = Matrix.scale(sx, sy, ox, oy).mul(this.matrix);
-        this.imatrix = this.matrix.inv();
-    },
-    rotate: function(theta, ox, oy) {
-        this.matrix = Matrix.rotate(theta, ox, oy).mul(this.matrix);
-        this.imatrix = this.matrix.inv();
-    },
-    translate: function(tx, ty) {
-        this.matrix = Matrix.translate(tx, ty).mul(this.matrix);
-        this.imatrix = this.matrix.inv();
-    },
-    skewX: function(s) {
-        this.matrix = Matrix.skewX(s).mul(this.matrix);
-        this.imatrix = this.matrix.inv();
-    },
-    skewY: function(s) {
-        this.matrix = Matrix.skewY(s).mul(this.matrix);
-        this.imatrix = this.matrix.inv();
-    },
-    addColorStop: function(offset, color) {
-        var self = this;
-        if (null == self.stops) self.stops = {};
-        self.stops[String(offset)] = [+offset, parseColor(color) || [0,0,0,0]];
-        var o = Object.keys(self.stops);
-        o.sort(function(a, b) {return parseFloat(a) - parseFloat(b);});
-        self._stops = o.map(function(o) {return self.stops[o];});
-    },
-    getColorAt: function(x, y) {
-        var self = this, p;
-        if (self._colorAt)
-        {
-            p = self.imatrix.transform(x, y)
-            return self._colorAt(p.x, p.y, self._stops, new ImArray(4), 0);
-        }
-    },
-    getBitmap: function(w, h) {
-        var self = this, m = self.imatrix, color_at = self._colorAt,
-            stops, i, x, y, p, size, bmp, c;
-        if (color_at)
-        {
-            size = (w*h) << 2;
-            bmp = new ImArray(size);
-            c = new ImArray(4);
-            stops = self._stops;
-            for (x=0,y=0,i=0; i<size; i+=4,++x)
-            {
-                if (x >= w) {x=0; ++y;}
-                p = m.transform(x, y)
-                color_at(p.x, p.y, stops, bmp, i);
-            }
-            return bmp;
-        }
-    }
+    transform: null,
+    addColorStop: null,
+    getColorAt: null,
+    getBitmap: null
 };
 Gradient.createLinearGradient = function(x1, y1, x2, y2) {
     x1 = x1 || 0;
@@ -129,7 +126,6 @@ Gradient.createLinearGradient = function(x1, y1, x2, y2) {
         return interpolatePixel(
             pixel, i || 0,
             stops[stop1][1], stops[stop2][1],
-            // warp the value if needed, between stop ranges
             stops[stop2][0] > stops[stop1][0] ? (t - stops[stop1][0])/(stops[stop2][0] - stops[stop1][0]) : t
         );
     });
@@ -192,7 +188,6 @@ Gradient.createRadialGradient = function(x0, y0, r0, x1, y1, r1) {
         return interpolatePixel(
             pixel, i || 0,
             stops[stop1][1], stops[stop2][1],
-            // warp the value if needed, between stop ranges
             stops[stop2][0] > stops[stop1][0] ? (t - stops[stop1][0])/(stops[stop2][0] - stops[stop1][0]) : t
         );
     });
@@ -212,7 +207,6 @@ Gradient.createConicGradient = function(angle, cx, cy) {
         return interpolatePixel(
             pixel, i || 0,
             stops[stop1][1], stops[stop2][1],
-            // warp the value if needed, between stop ranges
             stops[stop2][0] > stops[stop1][0] ? (t - stops[stop1][0])/(stops[stop2][0] - stops[stop1][0]) : t
         );
     });
@@ -242,7 +236,6 @@ Gradient.createEllipticGradient = function(cx, cy, rx, ry, angle) {
         return interpolatePixel(
             pixel, i || 0,
             stops[stop1][1], stops[stop2][1],
-            // warp the value if needed, between stop ranges
             stops[stop2][0] > stops[stop1][0] ? (t - stops[stop1][0])/(stops[stop2][0] - stops[stop1][0]) : t
         );
     });
@@ -259,15 +252,6 @@ function Matrix(m00, m01, m02, m10, m11, m12)
         self.m10 = m10;
         self.m11 = m11;
         self.m12 = m12;
-    }
-    else
-    {
-        self.m00 = 1;
-        self.m01 = 0;
-        self.m02 = 0;
-        self.m10 = 0;
-        self.m11 = 1;
-        self.m12 = 0;
     }
 }
 Matrix.prototype = {
@@ -305,6 +289,11 @@ Matrix.prototype = {
         );
     },
     transform: function(x, y) {
+        if (1 === arguments.length)
+        {
+            y = x.y;
+            x = x.x;
+        }
         var self = this;
         return {
             x: self.m00*x + self.m01*y + self.m02,
