@@ -2,16 +2,16 @@
 *   Gradient
 *   class to create linear/radial/elliptical/conic gradients as bitmaps even without canvas
 *
-*   @version 1.1.1
+*   @version 1.2.0
 *   https://github.com/foo123/Gradient
 *
 **/
 !function(root, name, factory) {
 "use strict";
 if (('object' === typeof module) && module.exports) /* CommonJS */
-    (module.$deps = module.$deps||{}) && (module.exports = module.$deps[name] = factory.call(root));
+    module.exports = factory.call(root);
 else if (('function' === typeof define) && define.amd && ('function' === typeof require) && ('function' === typeof require.specified) && require.specified(name) /*&& !require.defined(name)*/) /* AMD */
-    define(name, ['module'], function(module) {factory.moduleUri = module.uri; return factory.call(root);});
+    define(name, ['module'], function(module) {return factory.call(root);});
 else if (!(name in root)) /* Browser/WebWorker/.. */
     (root[name] = factory.call(root)||1) && ('function' === typeof(define)) && define.amd && define(function() {return root[name];});
 }(  /* current root */          'undefined' !== typeof self ? self : this,
@@ -23,6 +23,7 @@ var HAS = Object.prototype.hasOwnProperty,
     stdMath = Math, PI = stdMath.PI, TWO_PI = 2*PI, HALF_PI = PI/2, EPS = 1e-6,
     ImArray = 'undefined' !== typeof Uint8ClampedArray ? Uint8ClampedArray : ('undefined' !== typeof Uint8Array ? Uint8Array : Array);
 
+// Gradient Pattern
 function Gradient(grad_color_at)
 {
     if (
@@ -71,23 +72,25 @@ function Gradient(grad_color_at)
     self.addColorStop = function(offset, color) {
         _stops = null;
         stops[String(offset)] = [+offset, parseColor(color) || [0,0,0,0]];
-    }
+    };
     self.getColorAt = function(x, y) {
         var p = imatrix.transform(x, y);
         return grad_color_at(p.x, p.y, colorStops(), new ImArray(4), 0);
     };
-    self.getBitmap = function(w, h) {
-        var color_stops = colorStops(), i, x, y, p, size = (w*h) << 2, bmp = new ImArray(size);
+    self.getBitmap = function(width, height) {
+        width = stdMath.round(width);
+        height = stdMath.round(height);
+        var color_stops = colorStops(), i, x, y, p, size = (width*height) << 2, bmp = new ImArray(size);
         for (x=0,y=0,i=0; i<size; i+=4,++x)
         {
-            if (x >= w) {x=0; ++y;}
+            if (x >= width) {x=0; ++y;}
             p = imatrix.transform(x, y);
             grad_color_at(p.x, p.y, color_stops, bmp, i);
         }
         return bmp;
     };
 }
-Gradient.VERSION = "1.1.1";
+Gradient.VERSION = "1.2.0";
 Gradient.prototype = {
     constructor: Gradient,
     transform: null,
@@ -241,6 +244,138 @@ Gradient.createEllipticGradient = function(cx, cy, rx, ry, angle) {
     });
 };
 
+// Image Pattern
+function Pattern(pat_color_at)
+{
+    if (
+        !(this instanceof Pattern) ||
+        ('function' !== typeof pat_color_at) ||
+        (4 > pat_color_at.length)
+    )
+    {
+        throw new Error('Pattern: invalid pattern');
+    }
+
+    var self = this, imatrix = new Matrix();
+
+    self.transform = {
+        reset: function() {
+            imatrix = new Matrix();
+        },
+        scale: function(sx, sy, ox, oy) {
+            imatrix = imatrix.mul(Matrix.scale(1/sx, 1/sy, ox, oy));
+        },
+        rotate: function(theta, ox, oy) {
+            imatrix = imatrix.mul(Matrix.rotate(-theta, ox, oy));
+        },
+        translate: function(tx, ty) {
+            imatrix = imatrix.mul(Matrix.translate(-tx, -ty));
+        },
+        skewX: function(s) {
+            imatrix = imatrix.mul(Matrix.skewX(s).inv());
+        },
+        skewX: function(s) {
+            imatrix = imatrix.mul(Matrix.skewY(s).inv());
+        }
+    };
+    self.getColorAt = function(x, y) {
+        var p = imatrix.transform(x, y);
+        return pat_color_at(p.x, p.y, new ImArray(4), 0);
+    };
+    self.getBitmap = function(width, height) {
+        width = stdMath.round(width);
+        height = stdMath.round(height);
+        var i, x, y, p, size = (width*height) << 2, bmp = new ImArray(size);
+        for (x=0,y=0,i=0; i<size; i+=4,++x)
+        {
+            if (x >= width) {x=0; ++y;}
+            p = imatrix.transform(x, y);
+            pat_color_at(p.x, p.y, bmp, i);
+        }
+        return bmp;
+    };
+}
+Pattern.prototype = {
+    constructor: Pattern,
+    transform: null,
+    getColorAt: null,
+    getBitmap: null
+};
+Pattern.createPattern = function(imageData, repetition) {
+    if (imageData && imageData.data && imageData.width && imageData.height && (imageData.data.length === 4*imageData.width*imageData.height))
+    {
+        var width = imageData.width, height = imageData.height;
+        switch (repetition)
+        {
+            case 'no-repeat':
+            return new Pattern(function(x, y, pixel, i) {
+                x = stdMath.round(x);
+                y = stdMath.round(y);
+                if (0 <= x && x < width && 0 <= y && y < height)
+                {
+                    var j = (x + y*width) << 2;
+                    pixel[i + 0] = imageData.data[j + 0];
+                    pixel[i + 1] = imageData.data[j + 1];
+                    pixel[i + 2] = imageData.data[j + 2];
+                    pixel[i + 3] = imageData.data[j + 3];
+                }
+            });
+            case 'repeat-x':
+            return new Pattern(function(x, y, pixel, i) {
+                x = stdMath.round(x);
+                y = stdMath.round(y);
+                if (0 <= y && y < height)
+                {
+                    x = x % width;
+                    if (0 > x) x += width;
+                    var j = (x + y*width) << 2;
+                    pixel[i + 0] = imageData.data[j + 0];
+                    pixel[i + 1] = imageData.data[j + 1];
+                    pixel[i + 2] = imageData.data[j + 2];
+                    pixel[i + 3] = imageData.data[j + 3];
+                }
+            });
+            case 'repeat-y':
+            return new Pattern(function(x, y, pixel, i) {
+                x = stdMath.round(x);
+                y = stdMath.round(y);
+                if (0 <= x && x < width)
+                {
+                    y = y % height;
+                    if (0 > y) y += height;
+                    var j = (x + y*width) << 2;
+                    pixel[i + 0] = imageData.data[j + 0];
+                    pixel[i + 1] = imageData.data[j + 1];
+                    pixel[i + 2] = imageData.data[j + 2];
+                    pixel[i + 3] = imageData.data[j + 3];
+                }
+            });
+            case 'repeat':
+            default:
+            return new Pattern(function(x, y, pixel, i) {
+                x = stdMath.round(x);
+                y = stdMath.round(y);
+                x = x % width;
+                if (0 > x) x += width;
+                y = y % height;
+                if (0 > y) y += height;
+                var j = (x + y*width) << 2;
+                pixel[i + 0] = imageData.data[j + 0];
+                pixel[i + 1] = imageData.data[j + 1];
+                pixel[i + 2] = imageData.data[j + 2];
+                pixel[i + 3] = imageData.data[j + 3];
+            });
+        }
+    }
+    else
+    {
+        throw new Error('Pattern: invalid image data');
+    }
+};
+Gradient.Pattern = Pattern;
+Gradient.createPattern = Pattern.createPattern;
+
+// Homogeneous Transformation Matrix
 function Matrix(m00, m01, m02, m10, m11, m12)
 {
     var self = this;
@@ -376,6 +511,7 @@ function binary_search(x, a, n)
     }
     return l;
 }
+// color utilities
 function interpolatePixel(pixel, index, rgba0, rgba1, t)
 {
     pixel[index + 0] = clamp(stdMath.round(rgba0[0] + t*(rgba1[0] - rgba0[0])), 0, 255);

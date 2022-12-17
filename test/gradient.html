@@ -47,7 +47,7 @@ h4 {
 }
 </style>
 </head><body>
-<h1>Gradients</h1>
+<h1>Gradients and Patterns</h1>
 <div id="container">
 <h4>Linear:</h4>
 <canvas id="linear1" width="200" height="200"></canvas>
@@ -86,16 +86,16 @@ function drawLinearGradient(x1, y1, x2, y2)
     const canvas2 = document.getElementById('linear2');
     const ctx1 = canvas1.getContext("2d");
     const ctx2 = canvas2.getContext("2d");
-    
+
     const gradient1 = ctx1.createLinearGradient(x1, y1, x2, y2);
     const gradient2 = Gradient.createLinearGradient(x1, y1, x2, y2);
-    
+
     addColorStops(gradient1);
     addColorStops(gradient2);
-    
+
     ctx1.fillStyle = gradient1;
     ctx1.fillRect(0, 0, w, h);
-    
+
     const imData = ctx2.createImageData(w, h);
     imData.data.set(gradient2.getBitmap(w, h));
     ctx2.putImageData(imData, 0, 0);
@@ -109,13 +109,13 @@ function drawRadialGradient(x1, y1, r1, x2, y2, r2)
 
     const gradient1 = ctx1.createRadialGradient(x1, y1, r1, x2, y2, r2);
     const gradient2 = Gradient.createRadialGradient(x1, y1, r1, x2, y2, r2);
-    
+
     addColorStops(gradient1);
     addColorStops(gradient2);
-    
+
     ctx1.fillStyle = gradient1;
     ctx1.fillRect(0, 0, w, h);
-    
+
     const imData = ctx2.createImageData(w, h);
     imData.data.set(gradient2.getBitmap(w, h));
     ctx2.putImageData(imData, 0, 0);
@@ -130,30 +130,37 @@ function drawEllipticGradient(cx, cy, rx, ry, angle)
     const ctx2 = canvas2.getContext("2d");
     const ctx3 = canvas3.getContext("2d");
     const ctx4 = canvas4.getContext("2d");
-    
+
     const r = Math.max(rx, ry), sx = rx/r, sy = ry/r;
-    
+
     const gradient1 = ctx1.createRadialGradient(cx/sx, cy/sy, 0, cx/sx, cy/sy, r);
-    const gradient2 = Gradient.createRadialGradient(cx, cy, 0, cx, cy, r);
+    const gradient2 = Gradient.createRadialGradient(cx/sx, cy/sy, 0, cx/sx, cy/sy, r);
     const gradient3 = ctx3.createRadialGradient(cx, cy, 0, cx, cy, r);
     const gradient4 = Gradient.createEllipticGradient(cx, cy, rx, ry, angle);
-    
+
     addColorStops(gradient1);
     addColorStops(gradient2);
     addColorStops(gradient3);
     addColorStops(gradient4);
-    
+
     // transform radial gradient1 to become an unrotated elliptic
     ctx1.scale(sx, sy);
     ctx1.fillStyle = gradient1;
     ctx1.fillRect(0, 0, w/sx, h/sy);
-    // gradient2 is a transformed radial gradient
-    gradient2.transform.translate(-cx, -cy);
-    gradient2.transform.scale(sx, sy);
-    //gradient2.transform.rotate(-angle);
-    gradient2.transform.translate(cx, cy);
+
+    // create a pattern from the gradient, just for fun
+    const pattern2 = Gradient.createPattern({
+        data: gradient2.getBitmap(w/sx, h/sy),
+        width: Math.round(w/sx),
+        height: Math.round(h/sy)
+    }, 'no-repeat');
+    // gradient2/pattern2 is a transformed radial gradient
+    //pattern2.transform.translate(-cx, -cy);
+    pattern2.transform.scale(sx, sy);
+    //pattern2.transform.rotate(-angle);
+    //pattern2.transform.translate(cx, cy);
     const imData2 = ctx2.createImageData(w, h);
-    imData2.data.set(gradient2.getBitmap(w, h));
+    imData2.data.set(pattern2.getBitmap(w, h));
     ctx2.putImageData(imData2, 0, 0);
 
     // transform radial gradient3 to become a rotated elliptic (does not produce expected result)
@@ -174,16 +181,16 @@ function drawConicGradient(angle, cx, cy)
     const canvas2 = document.getElementById('conic2');
     const ctx1 = canvas1.getContext("2d");
     const ctx2 = canvas2.getContext("2d");
-    
+
     const gradient1 = ctx1.createConicGradient(angle, cx, cy);
     const gradient2 = Gradient.createConicGradient(angle, cx, cy);
-    
+
     addColorStops(gradient1);
     addColorStops(gradient2);
-    
+
     ctx1.fillStyle = gradient1;
     ctx1.fillRect(0, 0, w, h);
-    
+
     const imData = ctx2.createImageData(w, h);
     imData.data.set(gradient2.getBitmap(w, h));
     ctx2.putImageData(imData, 0, 0);
