@@ -2,7 +2,7 @@
 *   Gradient
 *   class to create linear/radial/elliptical/conic gradients as bitmaps even without canvas
 *
-*   @version 1.2.0
+*   @version 1.2.1
 *   https://github.com/foo123/Gradient
 *
 **/
@@ -19,7 +19,7 @@ else if (!(name in root)) /* Browser/WebWorker/.. */
     /* module factory */        function ModuleFactory__Gradient(undef) {
 "use strict";
 
-var HAS = Object.prototype.hasOwnProperty,
+var HAS = Object.prototype.hasOwnProperty, def = Object.defineProperty,
     stdMath = Math, PI = stdMath.PI, TWO_PI = 2*PI, HALF_PI = PI/2, EPS = 1e-6,
     ImArray = 'undefined' !== typeof Uint8ClampedArray ? Uint8ClampedArray : ('undefined' !== typeof Uint8Array ? Uint8Array : Array);
 
@@ -35,8 +35,7 @@ function Gradient(grad_color_at)
         throw new Error('Gradient: invalid gradient');
     }
 
-    var self = this,
-        imatrix = new Matrix(),
+    var self = this, transform = new Transform(),
         stops = {'0': [0, [0,0,0,0]], '1': [1, [0,0,0,0]]},
         _stops = null, colorStops
     ;
@@ -49,38 +48,32 @@ function Gradient(grad_color_at)
         }
         return _stops;
     };
-    self.transform = {
-        reset: function() {
-            imatrix = new Matrix();
+
+    def(self, 'transform', {
+        get: function() {
+            return transform;
         },
-        scale: function(sx, sy, ox, oy) {
-            imatrix = imatrix.mul(Matrix.scale(1/sx, 1/sy, ox, oy));
+        set: function(transform) {
         },
-        rotate: function(theta, ox, oy) {
-            imatrix = imatrix.mul(Matrix.rotate(-theta, ox, oy));
-        },
-        translate: function(tx, ty) {
-            imatrix = imatrix.mul(Matrix.translate(-tx, -ty));
-        },
-        skewX: function(s) {
-            imatrix = imatrix.mul(Matrix.skewX(s).inv());
-        },
-        skewX: function(s) {
-            imatrix = imatrix.mul(Matrix.skewY(s).inv());
-        }
-    };
+        enumerable: true,
+        configurable: false
+    });
     self.addColorStop = function(offset, color) {
         _stops = null;
         stops[String(offset)] = [+offset, parseColor(color) || [0,0,0,0]];
     };
     self.getColorAt = function(x, y) {
-        var p = imatrix.transform(x, y);
+        var p = transform.imatrix(true).transform(x, y);
         return grad_color_at(p.x, p.y, colorStops(), new ImArray(4), 0);
     };
     self.getBitmap = function(width, height) {
         width = stdMath.round(width);
         height = stdMath.round(height);
-        var color_stops = colorStops(), i, x, y, p, size = (width*height) << 2, bmp = new ImArray(size);
+        var imatrix = transform.imatrix(true),
+            color_stops = colorStops(),
+            i, x, y, p,
+            size = (width*height) << 2,
+            bmp = new ImArray(size);
         for (x=0,y=0,i=0; i<size; i+=4,++x)
         {
             if (x >= width) {x=0; ++y;}
@@ -90,7 +83,7 @@ function Gradient(grad_color_at)
         return bmp;
     };
 }
-Gradient.VERSION = "1.2.0";
+Gradient.VERSION = "1.2.1";
 Gradient.prototype = {
     constructor: Gradient,
     transform: null,
@@ -256,36 +249,28 @@ function Pattern(pat_color_at)
         throw new Error('Pattern: invalid pattern');
     }
 
-    var self = this, imatrix = new Matrix();
+    var self = this, transform = new Transform();
 
-    self.transform = {
-        reset: function() {
-            imatrix = new Matrix();
+    def(self, 'transform', {
+        get: function() {
+            return transform;
         },
-        scale: function(sx, sy, ox, oy) {
-            imatrix = imatrix.mul(Matrix.scale(1/sx, 1/sy, ox, oy));
+        set: function(transform) {
         },
-        rotate: function(theta, ox, oy) {
-            imatrix = imatrix.mul(Matrix.rotate(-theta, ox, oy));
-        },
-        translate: function(tx, ty) {
-            imatrix = imatrix.mul(Matrix.translate(-tx, -ty));
-        },
-        skewX: function(s) {
-            imatrix = imatrix.mul(Matrix.skewX(s).inv());
-        },
-        skewX: function(s) {
-            imatrix = imatrix.mul(Matrix.skewY(s).inv());
-        }
-    };
+        enumerable: true,
+        configurable: false
+    });
     self.getColorAt = function(x, y) {
-        var p = imatrix.transform(x, y);
+        var p = transform.imatrix(true).transform(x, y);
         return pat_color_at(p.x, p.y, new ImArray(4), 0);
     };
     self.getBitmap = function(width, height) {
         width = stdMath.round(width);
         height = stdMath.round(height);
-        var i, x, y, p, size = (width*height) << 2, bmp = new ImArray(size);
+        var imatrix = transform.imatrix(true),
+            i, x, y, p,
+            size = (width*height) << 2,
+            bmp = new ImArray(size);
         for (x=0,y=0,i=0; i<size; i+=4,++x)
         {
             if (x >= width) {x=0; ++y;}
@@ -375,6 +360,97 @@ Pattern.createPattern = function(imageData, repetition) {
 Gradient.Pattern = Pattern;
 Gradient.createPattern = Pattern.createPattern;
 
+// Transform
+function Transform()
+{
+    var self = this,
+        matrix = new Matrix(),
+        imatrix = new Matrix(),
+        prev = [];
+
+    self.dispose = function() {
+        matrix = null;
+        imatrix = null;
+        prev = null;
+    };
+    self.matrix = function(orig) {
+        return true === orig ? matrix : matrix.clone();
+    };
+    self.imatrix = function(orig) {
+        return true === orig ? imatrix : imatrix.clone();
+    };
+    self.reset = function() {
+        matrix = new Matrix();
+        imatrix = new Matrix();
+        return self;
+    };
+    self.save = function() {
+        // up to 10 saves
+        if (prev.length >= 10) prev.shift();
+        prev.push([matrix, imatrix]);
+        return self;
+    };
+    self.restore = function() {
+        if (prev.length)
+        {
+            var p = prev.pop();
+            matrix = p[0]; imatrix = p[1];
+        }
+        return self;
+    };
+    self.scale = function(sx, sy, ox, oy) {
+        matrix = Matrix.scale(sx, sy, ox, oy).mul(matrix);
+        imatrix = imatrix.mul(Matrix.scale(1/sx, 1/sy, ox, oy));
+        return self;
+    };
+    self.rotate = function(theta, ox, oy) {
+        matrix = Matrix.rotate(theta, ox, oy).mul(matrix);
+        imatrix = imatrix.mul(Matrix.rotate(-theta, ox, oy));
+        return self;
+    };
+    self.translate = function(tx, ty) {
+        matrix = Matrix.translate(tx, ty).mul(matrix);
+        imatrix = imatrix.mul(Matrix.translate(-tx, -ty));
+        return self;
+    };
+    self.reflectX = function(s) {
+        matrix = Matrix.reflectX().mul(matrix);
+        imatrix = imatrix.mul(Matrix.reflectX());
+        return self;
+    };
+    self.reflectY = function(s) {
+        matrix = Matrix.reflectY().mul(matrix);
+        imatrix = imatrix.mul(Matrix.reflectY());
+        return self;
+    };
+    self.skewX = function(s) {
+        matrix = Matrix.skewX(s).mul(matrix);
+        imatrix = imatrix.mul(Matrix.skewX(s).inv());
+        return self;
+    };
+    self.skewY = function(s) {
+        matrix = Matrix.skewY(s).mul(matrix);
+        imatrix = imatrix.mul(Matrix.skewY(s).inv());
+        return self;
+    };
+}
+Transform.prototype = {
+    constructor: Transform,
+    dispose: null,
+    matrix: null,
+    imatrix: null,
+    reset: null,
+    save: null,
+    restore: null,
+    scale: null,
+    rotate: null,
+    translate: null,
+    reflectX: null,
+    reflectY: null,
+    skewX: null,
+    skewY: null
+};
+
 // Homogeneous Transformation Matrix
 function Matrix(m00, m01, m02, m10, m11, m12)
 {
@@ -397,6 +473,13 @@ Matrix.prototype = {
     m10: 0,
     m11: 1,
     m12: 0,
+    clone: function() {
+        var self = this;
+        return new Matrix(
+        self.m00, self.m01, self.m02,
+        self.m10, self.m11, self.m12
+        );
+    },
     mul: function(other) {
         var self = this;
         return new Matrix(
@@ -438,8 +521,8 @@ Matrix.prototype = {
 };
 Matrix.translate = function(tx, ty) {
     return new Matrix(
-    1, 0, tx,
-    0, 1, ty
+    1, 0, tx || 0,
+    0, 1, ty || 0
     );
 };
 Matrix.scale = function(sx, sy, ox, oy) {
@@ -453,22 +536,34 @@ Matrix.scale = function(sx, sy, ox, oy) {
 Matrix.rotate = function(theta, ox, oy) {
     ox = ox || 0;
     oy = oy || 0;
-    var cos = stdMath.cos(theta), sin = stdMath.sin(theta);
+    var cos = stdMath.cos(theta || 0), sin = stdMath.sin(theta || 0);
     return new Matrix(
     cos, -sin, ox - cos*ox + sin*oy,
     sin,  cos, oy - cos*oy - sin*ox
     );
 };
+Matrix.reflectX = function(s) {
+    return new Matrix(
+    -1, 0, 0,
+     0, 1, 0
+    );
+};
+Matrix.reflectY = function(s) {
+    return new Matrix(
+    1,  0, 0,
+    0, -1, 0
+    );
+};
 Matrix.skewX = function(s) {
     return new Matrix(
-    1, s, 0,
+    1, s || 0, 0,
     0, 1, 0
     );
 };
 Matrix.skewY = function(s) {
     return new Matrix(
     1, 0, 0,
-    s, 1, 0
+    s || 0, 1, 0
     );
 };
 

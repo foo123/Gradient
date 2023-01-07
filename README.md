@@ -2,7 +2,7 @@
 
 Class to create **linear, radial, conic and elliptic gradients** and **image patterns** as bitmaps without canvas
 
-**version 1.2.0** (12 kB minified)
+**version 1.2.1** (13 kB minified)
 
 **API:**
 
@@ -19,9 +19,13 @@ grad.addColorStop(offset, color);
 grad.transform.scale(sx, sy);
 grad.transform.rotate(angle);
 grad.transform.translate(tx, ty);
+grad.transform.reflectX();
+grad.transform.reflectY();
 grad.transform.skewX(s);
 grad.transform.skewY(s);
 grad.transform.reset();
+grad.transform.save();
+grad.transform.restore();
 
 grad.getColorAt(x, y);
 grad.getBitmap(width, height);
@@ -33,9 +37,13 @@ const pat = Gradient.createPattern(imageData, repetition = 'repeat');
 pat.transform.scale(sx, sy);
 pat.transform.rotate(angle);
 pat.transform.translate(tx, ty);
+pat.transform.reflectX();
+pat.transform.reflectY();
 pat.transform.skewX(s);
 pat.transform.skewY(s);
 pat.transform.reset();
+pat.transform.save();
+pat.transform.restore();
 
 pat.getColorAt(x, y);
 pat.getBitmap(width, height);
