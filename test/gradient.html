@@ -47,7 +47,7 @@ h4 {
 }
 </style>
 </head><body>
-<h1>Gradients and Patterns</h1>
+<h1>Gradients and Patterns (<span id="ver"></span>)</h1>
 <div id="container">
 <h4>Linear:</h4>
 <canvas id="linear1" width="200" height="200"></canvas>
@@ -69,7 +69,9 @@ h4 {
 <script>
 (function() {
 "use strict";
+document.getElementById('ver').textContent = 'v.'+Gradient.VERSION;
 const w = 200, h = 200;
+const Matrix = Gradient.Matrix;
 
 function addColorStops(gradient)
 {
@@ -79,6 +81,22 @@ function addColorStops(gradient)
         gradient.addColorStop(s, colors[i]);
     });
     return gradient;
+}
+function fill_transformed_rect(ctx, x, y, w, h)
+{
+    const m = ctx.getTransform();
+    const m2 = (new Matrix(m.a, m.c, m.e, m.b, m.d, m.f)).inv();
+    const p1 = m2.transform(x, y),
+        p2 = m2.transform(x+w, y),
+        p3 = m2.transform(x+w, y+h),
+        p4 = m2.transform(x, y+h);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.lineTo(p4.x, p4.y);
+    ctx.closePath();
+    ctx.fill();
 }
 function drawLinearGradient(x1, y1, x2, y2)
 {
@@ -146,7 +164,7 @@ function drawEllipticGradient(cx, cy, rx, ry, angle)
     // transform radial gradient1 to become an unrotated elliptic
     ctx1.scale(sx, sy);
     ctx1.fillStyle = gradient1;
-    ctx1.fillRect(0, 0, w/sx, h/sy);
+    fill_transformed_rect(ctx1, 0, 0, w, h);
 
     // create a pattern from the gradient, just for fun
     const pattern2 = Gradient.createPattern({
@@ -163,13 +181,13 @@ function drawEllipticGradient(cx, cy, rx, ry, angle)
     imData2.data.set(pattern2.getBitmap(w, h));
     ctx2.putImageData(imData2, 0, 0);
 
-    // transform radial gradient3 to become a rotated elliptic (does not produce expected result)
-    ctx3.scale(sx, sy);
-    ctx3.translate(-cx, -cy);
-    ctx3.rotate(-angle);
+    // transform radial gradient3 to become a rotated elliptic
     ctx3.translate(cx, cy);
+    ctx3.rotate(-angle);
+    ctx3.translate(-cx*sx, -cy*sy);
+    ctx3.scale(sx, sy);
     ctx3.fillStyle = gradient3;
-    ctx3.fillRect(0, 0, w, h);
+    fill_transformed_rect(ctx3, 0, 0, w, h);
     // gradient4 is elliptic gradient
     const imData4 = ctx4.createImageData(w, h);
     imData4.data.set(gradient4.getBitmap(w, h));
