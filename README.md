@@ -2,7 +2,7 @@
 
 Class to create **linear, radial, conic and elliptic gradients** and **image patterns** as bitmaps without canvas
 
-**version 1.2.2** (13 kB minified)
+**version 1.2.3** (13 kB minified)
 
 **API:**
 
